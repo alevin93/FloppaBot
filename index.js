@@ -115,9 +115,9 @@ client.on("messageCreate", (message) => {
   if (command[0] === "record" || command[0] === "records") {
     getRecordStats(message);
   }
-  if (command[0] === "startcap") {
-    message.channel.send("This will now automatically update within a minute after capture.  You'll have 5 minutes to react to it.");
-  }
+  // if (command[0] === "startcap") {
+  //   message.channel.send("This will now automatically update within a minute after capture.  You'll have 5 minutes to react to it.");
+  // }
   // if (command[0] === "endcap") {
   //   endCartel(message);
   // }
@@ -175,8 +175,7 @@ const gangEmbed = (message) => {
 };
 
 const getRoster = (message, command) => {
-  fs.readFile('./memberStats.json', 'utf8', (err, data) => {
-    const members = JSON.parse(data);
+  const members = JSON.parse(fs.readFileSync('./memberStats.json', 'utf8'));
     var roster = [];
     for(let i = 0; i < members.length; i++) {
       if(!members[i] || members[i] === "") { continue; }
@@ -185,8 +184,8 @@ const getRoster = (message, command) => {
         roster.pop(i);
       }
     }
+    console.log(roster);
     message.channel.send(roster);
-  });
 }
 
 //----------- HELP FUNCTION ------------ //
@@ -531,6 +530,7 @@ const writeCaps = async () => {
     }
   );
   const json = await response.json().then((cartelInfo) => {
+    if(cartelInfo?.message) { console.log("API Limit Reached, try again later."); return;}
     fs.writeFile(
       "cartelInfo.json",
       JSON.stringify(cartelInfo),
@@ -659,7 +659,8 @@ const gainedCap = async (name, server) => {
 }
 
 const lostCap = (data, index, cartelInfo) => {
-  if(!data[index]) { 
+  console.log(data);
+  if(!data[0]) { 
     return;
   }
   const channel = client.channels.cache.get(channel_id);
@@ -754,6 +755,7 @@ const writeGangInfo = async () => {
         console.log("gangInfo.json updated");
       }
     );
+    console.log("GangInfo Updated!");
     if (gangInfoFlag) {
       writeGangMemberInfo(gangInfo);
       gangInfoFlag = false;
@@ -766,13 +768,9 @@ const writeGangInfo = async () => {
 var gangMemberInfoCounter = 0;
 
 const writeGangMemberInfo = async (gangInfo) => {
+  let gangInfoFile = gangInfo;
+  if(gangInfo.error || gangInfo.message) { console.log("Error with Gang Info writing gangMembers"); gangInfoFile = fs.readFileSync('./gangInfo.json', 'utf8'); }
     gangMemberInfoCounter++;
-    let gangInfoFile = gangInfo;
-    if(!gangInfoFile.members) {
-      let gangInfoFilef = fs.readFileSync('./gangInfo.json', 'utf8');
-    }
-
-    
 
       const members = gangInfoFile.members;
 
@@ -814,6 +812,7 @@ const writeGangMemberInfo = async (gangInfo) => {
 };
 
 const updateMemberStats = (results) => {
+  if(results.errors) { return; }
   fs.writeFile(
     "memberStats.json",
     JSON.stringify(results),
@@ -908,57 +907,45 @@ const endCartel = async (message) => {
 
 // ----------- IRON CHAT COMMANDS ------------------ //
 
-const checkIronLedger = (message) => {
-  var ironLedger = require('./ironLedger.json');
-  var fields = [];
-  for(let i = 0; i < ironLedger.length; i++) {
-    fields[i] =
-      {
-        name: `${ironLedger[i].name}`,
-        value: `${formatter.format(ironLedger[i].total_owed)}`,
-      }
-  }
-  const ironEmbed = new EmbedBuilder()
-      .setTitle("Iron Ledger")
-      .addFields(fields);
-    message.channel.send({ embeds: [ironEmbed] });
-}
+const calculateTax = () => {
+ const weekCounter = JSON.parse(fs.readFileSync('./weekCounter.json','utf8'));
+ const gangMembers = JSON.parse(fs.readFileSync('./gangMembers.json', 'utf8'));
+ const taxed = JSON.parse(fs.readFileSync('./taxedStats.json','utf8'));
+ const before = JSON.parse(fs.readFileSync(`./archive/${weekCounter - 1}.json`));
 
-const checkMemberLedger = (message, name) => {
-  var ironLedger = require('./ironLedger.json');
-  var transactions = "";
-  
-  for(let i = 0; i < ironLedger.length; i++) {
-    if(ironLedger[i].name.toLowerCase() === name) {
-      for(let j = 0; j < ironLedger[i].transactions.length; j++) {
-        transactions = transactions + ironLedger[i].transactions[j] + "\n"
-      }
-      const ironEmbed = new EmbedBuilder()
-      .setTitle(`${ironLedger[i].name}'s Ledger`)
-      .addFields(
-        {
-          name: "Name",
-          value: `${ironLedger[i].name}`
-        },
-        {
-          name: "Total Owed",
-          value: `${formatter.format(ironLedger[i].total_owed)}`
-        },
-        {
-          name: "Transactions",
-          value: `${transactions}`
-        }
-      )
-      .setFooter({
-        text: `Last Update: ${currentDate(2)}`,
-      });
-      message.channel.send({ embeds: [ironEmbed] });
+ const result = calculateStatistics(taxed, before, gangMembers);
+
+ for(let i = 0; i < result.length; i++) {
+  for(var key in result.data) {
+    if(results[i].data[key] === 0) {
+      delete result[i].data[key];
     }
   }
-  
+  if(Object.keys(result[i].data).length === 0) {
+    results[i].pop();
+  }
+ }
+ fs.writeFileSync('./taxStats.json', JSON.stringify(result), 'utf8');
 }
 
-//
+const updateTax = (taxed, stats) => {
+  const ledger = JSON.parse(fs.readFileSync('./ledger.json','utf8'));
+  for(let i = 0; i < stats.length; i++) {
+    for(var x in stats[i].data) {
+      if(ledger[stats[i][name]]) {
+        
+      } else {
+          var rec = {
+            name: stats[i].name,
+            owed: 
+        }
+      }
+    }
+  }
+    
+  }
+}
+
 
 // ----------- STATISTICS CALCULATION FUNCTIONS ------------- //
 
@@ -1261,19 +1248,29 @@ const validateFiles = () => {
     console.log("No records archive file detected");  
   }
   if(!archive) {
-    fs.writeFile(
+    fs.writeFileSync(
       "./recordsArchive.json",
       JSON.stringify({}),
-      'utf8',
-      function (err) {
-        if (err) {
-          console.log(
-            "An Error occured while validating files\n      "
-          );
-          return console.log(err);
-        }
-      }    
+      'utf8'
     );
+  }
+  var taxed = null;
+  try {
+    taxed = fs.readFileSync('./taxedStats.json','utf8');
+  } catch (err) {
+    console.log("No taxes file found!");
+  }
+  if(!taxed) {
+    fs.writeFileSync('./taxedStats.json', JSON.stringify([{ name: 'iron_sold', tax: 1900 }]), 'utf8');
+  }
+  var ledger = null;
+  try {
+    ledger = fs.readFileSync('./ledger.json','utf8');
+  } catch (err) {
+    console.log("No taxed stats file found");
+  }
+  if(!ledger) {
+    fs.writeFileSync('./ledger.json', JSON.stringify([]), 'utf8')
   }
 }
 
